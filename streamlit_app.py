@@ -1,12 +1,28 @@
 import streamlit as st
-import torch
-import timm
-import librosa
-import numpy as np
-import pandas as pd
-import plotly.express as px
-import os
-import gdown
+
+# ===== Safe Imports with Error Handling =====
+try:
+    import torch
+    import timm
+    import librosa
+    import numpy as np
+    import pandas as pd
+    import plotly.express as px
+    import os
+    import gdown
+except ModuleNotFoundError as e:
+    st.error(f"⚠️ A required library is missing: `{e.name}`")
+    st.info(
+        "If you're running this on **Streamlit Cloud**, check that your `requirements.txt` "
+        "contains the correct versions of `torch`, `torchaudio`, and other dependencies.\n\n"
+        "For CPU-only builds, your `requirements.txt` should look like:\n"
+        "```\n"
+        "torch==2.3.0+cpu\n"
+        "torchaudio==2.3.0+cpu\n"
+        "--extra-index-url https://download.pytorch.org/whl/cpu\n"
+        "```\n"
+    )
+    st.stop()
 
 # ===== Download Model from Google Drive if not present =====
 def download_model():
@@ -140,38 +156,41 @@ if page == "Home":
     if uploaded_file:
         st.audio(uploaded_file, format='audio/ogg')
         with st.spinner("🔍 Analyzing..."):
-            model_path = download_model()  # ensure model is downloaded
-            input_tensor = preprocess_audio(uploaded_file)
-            model = load_model(model_path)
-            with torch.no_grad():
-                output = model(input_tensor)
-                probs = torch.softmax(output, dim=1).cpu().numpy().flatten()
-                top5_idx = probs.argsort()[-5:][::-1]
-                top5_probs = probs[top5_idx]
+            try:
+                model_path = download_model()  # ensure model is downloaded
+                input_tensor = preprocess_audio(uploaded_file)
+                model = load_model(model_path)
+                with torch.no_grad():
+                    output = model(input_tensor)
+                    probs = torch.softmax(output, dim=1).cpu().numpy().flatten()
+                    top5_idx = probs.argsort()[-5:][::-1]
+                    top5_probs = probs[top5_idx]
 
-            taxonomy = load_metadata()
-            idx2label = {i: name for i, name in enumerate(sorted(taxonomy.primary_label.unique()))}
-            top5_labels = [idx2label.get(i, f"Class {i}") for i in top5_idx]
+                taxonomy = load_metadata()
+                idx2label = {i: name for i, name in enumerate(sorted(taxonomy.primary_label.unique()))}
+                top5_labels = [idx2label.get(i, f"Class {i}") for i in top5_idx]
 
-            st.subheader("🔬 Top 5 Predictions")
-            for i in range(5):
-                st.markdown(f"**{top5_labels[i]}** — {top5_probs[i]*100:.2f}%")
+                st.subheader("🔬 Top 5 Predictions")
+                for i in range(5):
+                    st.markdown(f"**{top5_labels[i]}** — {top5_probs[i]*100:.2f}%")
 
-            fig = px.bar(
-                x=top5_labels, y=top5_probs,
-                labels={'x':'Species', 'y':'Confidence'},
-                title="Prediction Confidence",
-                color=top5_probs,
-                color_continuous_scale="Viridis"
-            )
-            st.plotly_chart(fig, use_container_width=True)
+                fig = px.bar(
+                    x=top5_labels, y=top5_probs,
+                    labels={'x':'Species', 'y':'Confidence'},
+                    title="Prediction Confidence",
+                    color=top5_probs,
+                    color_continuous_scale="Viridis"
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
-            st.markdown("### 🧬 Taxonomy Info")
-            info_df = taxonomy[taxonomy.primary_label.isin(top5_labels)]
-            st.dataframe(info_df.reset_index(drop=True))
+                st.markdown("### 🧬 Taxonomy Info")
+                info_df = taxonomy[taxonomy.primary_label.isin(top5_labels)]
+                st.dataframe(info_df.reset_index(drop=True))
 
-            st.markdown("### 📊 Model Accuracy")
-            st.info("The model achieves **76% accuracy** on test data.")
+                st.markdown("### 📊 Model Accuracy")
+                st.info("The model achieves **76% accuracy** on test data.")
+            except Exception as e:
+                st.error(f"⚠️ Something went wrong while analyzing the audio: {e}")
 
     st.markdown("""
     ### 📞 Contact  
